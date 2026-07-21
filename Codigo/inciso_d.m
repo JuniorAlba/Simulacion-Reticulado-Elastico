@@ -104,8 +104,13 @@ fig2 = figure('Name', 'Animación con amortiguamiento', 'Position', [100 100 800
 pos_frame = pos_hist_drag{1};
 hold on;
 
-% dibujar linea de superficie libre
-h_sl = plot([x_min, x_max], [h_SL, h_SL], 'c--', 'LineWidth', 1.5);
+% dibujar cuerpo de agua (rectangulo relleno debajo de h_SL)
+h_water = fill([x_min x_max x_max x_min], [y_min y_min h_SL h_SL], ...
+    [0.82 0.93 1.0], 'EdgeColor', 'none');
+text(x_max - 10, y_min + 4, 'Fluido', 'FontSize', 12, 'Color', [0.2 0.4 0.7], 'FontWeight', 'bold');
+
+% linea de superficie libre
+h_sl = plot([x_min, x_max], [h_SL, h_SL], '-', 'Color', [0.2 0.5 0.9], 'LineWidth', 2);
 
 for b = 1:nBarras
     ni = m_Barras(b,1); nj = m_Barras(b,2);
@@ -114,17 +119,41 @@ for b = 1:nBarras
 end
 h_nodos2 = plot(pos_frame(:,1), pos_frame(:,2), 'ko', 'MarkerSize', 6, 'MarkerFaceColor', 'r');
 
-% dibujar esfera en nodo c
-theta_esf = linspace(0, 2*pi, 50);
+% colores de la esfera: parte seca y parte sumergida
+col_seca   = [0.85 0.85 0.95];
+col_mojada = [0.25 0.45 0.80];
+col_borde  = [0.2 0.2 0.6];
+
+% dibujar esfera con visualizacion de inmersion
+theta_esf = linspace(0, 2*pi, 100);
 x_esf = pos_frame(nodo_c,1) + r_esf * cos(theta_esf);
 y_esf = pos_frame(nodo_c,2) + r_esf * sin(theta_esf);
-h_esfera = fill(x_esf, y_esf, [0.7 0.7 1], 'EdgeColor', 'b', 'FaceAlpha', 0.3);
+y_c_frame = pos_frame(nodo_c, 2);
 
-h_titulo2 = title(sprintf('t = %.3f s  (Con amortiguamiento, r_{esf}=%.1f m)', t_drag(1), r_esf));
+if (y_c_frame - r_esf) >= h_SL
+    % esfera completamente fuera del agua
+    h_esf_seca   = fill(x_esf, y_esf, col_seca, 'EdgeColor', col_borde, 'LineWidth', 1.5);
+    h_esf_mojada = fill(NaN, NaN, col_mojada);
+elseif (y_c_frame + r_esf) <= h_SL
+    % esfera completamente sumergida
+    h_esf_seca   = fill(NaN, NaN, col_seca);
+    h_esf_mojada = fill(x_esf, y_esf, col_mojada, 'EdgeColor', col_borde, 'LineWidth', 1.5);
+else
+    % parcialmente sumergida: parte de arriba seca, parte de abajo mojada
+    h_esf_seca   = fill(x_esf, max(y_esf, h_SL), col_seca, 'EdgeColor', col_borde, 'LineWidth', 1.5);
+    h_esf_mojada = fill(x_esf, min(y_esf, h_SL), col_mojada, 'EdgeColor', col_borde, 'LineWidth', 1.5);
+end
+
+% handles invisibles para la leyenda (asi no se rompe al borrar/redibujar la esfera)
+h_leg_seca   = plot(NaN, NaN, 's', 'MarkerFaceColor', col_seca, 'MarkerEdgeColor', col_borde, 'MarkerSize', 10);
+h_leg_mojada = plot(NaN, NaN, 's', 'MarkerFaceColor', col_mojada, 'MarkerEdgeColor', col_borde, 'MarkerSize', 10);
+
+h_titulo2 = title(sprintf('t = %.2f s  (Con amortiguamiento)', t_drag(1)));
 axis equal; grid on;
 xlim([x_min x_max]); ylim([y_min y_max]);
 xlabel('x [m]'); ylabel('y [m]');
-legend([h_sl, h_esfera], {'Superficie libre', 'Esfera'}, 'Location', 'NorthEast');
+h_leg = legend([h_sl, h_leg_seca, h_leg_mojada], {'Superficie libre', 'Esfera (seca)', 'Esfera (sumergida)'}, 'Location', 'NorthEast');
+set(h_leg, 'AutoUpdate', 'off');
 hold off;
 
 % inicio gif
@@ -146,14 +175,29 @@ for idx = indices_frame_drag(2:end)
     % actualizo nodos
     set(h_nodos2, 'XData', pos_frame(:,1), 'YData', pos_frame(:,2));
 
-    % actualizo esfera
+    % borro la esfera vieja y la redibujo segun cuanto esta sumergida
+    delete(h_esf_seca);
+    delete(h_esf_mojada);
+
     x_esf = pos_frame(nodo_c,1) + r_esf * cos(theta_esf);
     y_esf = pos_frame(nodo_c,2) + r_esf * sin(theta_esf);
-    set(h_esfera, 'XData', x_esf, 'YData', y_esf);
+    y_c_frame = pos_frame(nodo_c, 2);
 
-    % actualizo título
-    set(h_titulo2, 'String', sprintf('t = %.3f s  (Con amortiguamiento, r_{esf}=%.1f m)', ...
-        t_drag(idx), r_esf));
+    hold on;
+    if (y_c_frame - r_esf) >= h_SL
+        h_esf_seca   = fill(x_esf, y_esf, col_seca, 'EdgeColor', col_borde, 'LineWidth', 1.5, 'HandleVisibility', 'off');
+        h_esf_mojada = fill(NaN, NaN, col_mojada, 'HandleVisibility', 'off');
+    elseif (y_c_frame + r_esf) <= h_SL
+        h_esf_seca   = fill(NaN, NaN, col_seca, 'HandleVisibility', 'off');
+        h_esf_mojada = fill(x_esf, y_esf, col_mojada, 'EdgeColor', col_borde, 'LineWidth', 1.5, 'HandleVisibility', 'off');
+    else
+        h_esf_seca   = fill(x_esf, max(y_esf, h_SL), col_seca, 'EdgeColor', col_borde, 'LineWidth', 1.5, 'HandleVisibility', 'off');
+        h_esf_mojada = fill(x_esf, min(y_esf, h_SL), col_mojada, 'EdgeColor', col_borde, 'LineWidth', 1.5, 'HandleVisibility', 'off');
+    end
+    hold off;
+
+    % actualizo titulo
+    set(h_titulo2, 'String', sprintf('t = %.2f s  (Con amortiguamiento)', t_drag(idx)));
 
     drawnow;
     gif;
